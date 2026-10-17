@@ -1,0 +1,180 @@
+/* ---------------------------------------------------------------------------
+   Base stylesheet — LOCKED shared file.
+   Minimal design tokens + layout so every page starts from the same place.
+   Dev 3 / Dev 4: add page-specific styles below the APP SHELL section, or
+   create sibling files (e.g. ReportIssue.css) and import them from the page.
+--------------------------------------------------------------------------- */
+
+:root {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface-2: #273449;
+  --border: #334155;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --brand: #38bdf8;
+  --brand-strong: #0ea5e9;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --radius: 10px;
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ------------------------------- APP SHELL ------------------------------ */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.app-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+
+/* --------------------------------- NAVBAR -------------------------------- */
+
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+}
+
+.navbar-logo {
+  color: var(--brand);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.navbar-links {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nav-link:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.nav-link-active,
+.nav-link-active:hover {
+  background: rgba(56, 189, 248, 0.14);
+  color: var(--brand);
+}
+
+/* -------------------------- SHARED PAGE PRIMITIVES ----------------------- */
+
+.page-header {
+  margin-bottom: 20px;
+}
+
+.page-header h1 {
+  margin: 0 0 6px;
+  font-size: 1.5rem;
+}
+
+.page-header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+
+.todo-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px dashed var(--warning);
+  border-radius: var(--radius);
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.todo-banner strong {
+  color: var(--warning);
+}
+
+/* --------------------------------- LEAFLET -------------------------------- */
+/* Leaflet sizes its container to 0 unless an explicit height is set.
+   MapPicker depends on this class existing. */
+
+.map-picker {
+  height: 420px;
+  width: 100%;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.map-picker-container {
+  height: 100%;
+  width: 100%;
+}
