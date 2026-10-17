@@ -1,112 +1,150 @@
-"""Dev 1 — Duplicate check (Haversine) + Priority algorithm.
-
-Contract file: `priority_engine` is imported by BOTH routers, so the
-signatures below are fixed. Fill in the TODO bodies; do not rename.
-
-Contract:
-    haversine_distance(lat1, lon1, lat2, lon2) -> float   [DONE]
-    find_duplicates(collection, lat, lon, radius_m)       [TODO]
-    calculate_priority(category, upvotes, ...) -> int     [TODO]
-"""
-
 import math
-from typing import List
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterable, Optional
 
-# Upper bound of the priority score. Clamped so the frontend can render a
-# stable 0-100 bar without needing to know the weighting internals.
-PRIORITY_MAX = 100
+CATEGORY_WEIGHTS: Dict[str, int] = {
+    "water leak": 5,
+    "pothole": 4,
+    "broken streetlight": 3,
+    "overflowing garbage": 2,
+}
 
-# Base severity per category, before upvote / age bonuses. Dev 1 owns these
-# numbers — they drive the "priority leaderboard" on AnalyticsPage.
-CATEGORY_WEIGHTS = {
-    "Pothole": 40,
-    "Street Light": 35,
-    "Garbage": 25,
-    "Graffiti": 15,
-    "Water Logging": 45,
-    "Broken Road": 50,
-    "Sewage": 55,
-    "Other": 20,
+DEFAULT_TEAMS: Dict[str, str] = {
+    "water leak": "Water Supply Board",
+    "pothole": "Roads & Maintenance Dept",
+    "broken streetlight": "Electrical Grid Team",
+    "overflowing garbage": "Sanitation & Waste Dept",
 }
 
 
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Great-circle distance between two WGS-84 points, in METRES.
+def get_category_weight(category: Optional[str]) -> int:
+    if not category:
+        return 3
+    normalized = category.strip().lower()
+    if normalized in CATEGORY_WEIGHTS:
+        return CATEGORY_WEIGHTS[normalized]
+    for key, weight in CATEGORY_WEIGHTS.items():
+        if key in normalized or normalized in key:
+            return weight
+    return 3
 
-    Implemented so the duplicate check matches what MongoDB's $near returns,
-    letting us double-check results in Python rather than trusting the
-    geo index alone.
 
-    Args:
-        lat1, lon1: first point (degrees).
-        lat2, lon2: second point (degrees).
+def get_default_team(category: Optional[str]) -> str:
+    if not category:
+        return "Roads & Maintenance Dept"
+    normalized = category.strip().lower()
+    return DEFAULT_TEAMS.get(normalized, "Roads & Maintenance Dept")
 
-    Returns:
-        Distance in metres.
+
+def haversine_distance_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     """
-    radius_m = 6_371_000  # mean Earth radius
-
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    d_phi = math.radians(lat2 - lat1)
-    d_lambda = math.radians(lon2 - lon1)
-
-    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-    return radius_m * c
-
-
-def find_duplicates(collection, lat: float, lon: float, radius_m: float = 100.0) -> List[dict]:
-    """Return issues already reported within `radius_m` of (lat, lon).
-
-    TODO(Dev 1): implement using the 2dsphere index created in
-    `database.ensure_indexes()`.
-
-        1. Build GeoJSON point: {"type": "Point", "coordinates": [lon, lat]}
-           (note: coordinates are [lon, lat], NOT [lat, lon]).
-        2. `collection.find({"location": {"$near": {"$geometry": point,
-           "$maxDistance": radius_m}}})`.
-        3. Also filter on category if you want cross-category vs same-category
-           duplicate behaviour — your call, document it in the README.
-
-    Returns:
-        Matching documents, sorted nearest-first. Empty list if none.
+    Calculate the great-circle distance in meters between two GPS coordinates.
     """
-    raise NotImplementedError("TODO(Dev 1): implement find_duplicates()")
+    earth_radius_meters = 6371000.0
+    phi1 = math.radians(float(lat1))
+    phi2 = math.radians(float(lat2))
+    delta_phi = math.radians(float(lat2) - float(lat1))
+    delta_lambda = math.radians(float(lng2) - float(lng1))
+
+    a = (
+        math.sin(delta_phi / 2.0) ** 2
+        + math.cos(phi1) * math.cos(phi2) * (math.sin(delta_lambda / 2.0) ** 2)
+    )
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1.0 - a)))
+    return round(earth_radius_meters * c, 2)
 
 
-def calculate_priority(
+def _compute_hours_unresolved(created_at_iso: Optional[Any]) -> float:
+    if not created_at_iso:
+        return 0.0
+    try:
+        if isinstance(created_at_iso, datetime):
+            created_dt = created_at_iso
+        else:
+            raw = str(created_at_iso).strip()
+            if raw.endswith("Z"):
+                raw = raw[:-1] + "+00:00"
+            created_dt = datetime.fromisoformat(raw)
+
+        if created_dt.tzinfo is None:
+            created_dt = created_dt.replace(tzinfo=timezone.utc)
+
+        now_utc = datetime.now(timezone.utc)
+        diff_hours = (now_utc - created_dt).total_seconds() / 3600.0
+        return max(0.0, diff_hours)
+    except Exception:
+        return 0.0
+
+
+def calculate_priority_score(
     category: str,
-    upvotes: int = 0,
-    age_hours: float = 0.0,
-    has_worker_photo: bool = False,
-    is_duplicate: bool = False,
-) -> int:
-    """Score how urgently an issue should be worked, 0..PRIORITY_MAX.
-
-    TODO(Dev 1): implement the scoring formula.
-
-    Intended shape (adapt as you see fit, but keep the signature):
-
-        score  = CATEGORY_WEIGHTS.get(category, 20)          # base severity
-               + min(upvotes * 5, 40)                        # community demand
-               + min(age_hours * 0.5, 20)                    # time open
-               - (20 if is_duplicate else 0)                 # penalise dupes
-        return max(0, min(score, PRIORITY_MAX))              # clamp to 0-100
-
-    Constraints the rest of the app depends on:
-        - Must return an `int`.
-        - Must stay within 0..PRIORITY_MAX inclusive.
-        - Must be deterministic for identical inputs (AnalyticsPage sorts on it).
-
-    Args:
-        category: one of `models.Category` values.
-        upvotes: current upvote count.
-        age_hours: hours since `created_at`.
-        has_worker_photo: True once a worker uploaded proof (signals progress).
-        is_duplicate: True when linked to another report of the same issue.
-
-    Returns:
-        Priority score as an int.
+    report_count: int = 1,
+    severity: int = 3,
+    created_at_iso: Optional[Any] = None,
+) -> float:
     """
-    raise NotImplementedError("TODO(Dev 1): implement calculate_priority()")
+    Dynamic Priority Formula:
+    Priority Score = (W_category * 10) + (report_count * 15) + (severity * 5) + (hours_unresolved * 2)
+    """
+    w_category = get_category_weight(category)
+    safe_reports = max(1, int(report_count or 1))
+    safe_severity = max(1, min(5, int(severity or 3)))
+    hours_unresolved = _compute_hours_unresolved(created_at_iso)
+
+    score = (
+        (w_category * 10.0)
+        + (safe_reports * 15.0)
+        + (safe_severity * 5.0)
+        + (hours_unresolved * 2.0)
+    )
+    return round(score, 1)
+
+
+def extract_lat_lng(issue_doc: Dict[str, Any]) -> Optional[tuple]:
+    loc = issue_doc.get("location")
+    if isinstance(loc, dict) and loc.get("lat") is not None and loc.get("lng") is not None:
+        try:
+            return float(loc["lat"]), float(loc["lng"])
+        except (TypeError, ValueError):
+            pass
+    if issue_doc.get("lat") is not None and issue_doc.get("lng") is not None:
+        try:
+            return float(issue_doc["lat"]), float(issue_doc["lng"])
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def find_nearby_duplicate(
+    existing_issues: Iterable[Dict[str, Any]],
+    lat: float,
+    lng: float,
+    category: str,
+    radius_meters: float = 50.0,
+) -> Optional[Dict[str, Any]]:
+    """
+    Returns the closest unresolved issue of the same category within `radius_meters` (default 50m).
+    """
+    target_category = (category or "").strip().lower()
+    closest_issue: Optional[Dict[str, Any]] = None
+    closest_distance = float("inf")
+
+    for issue in existing_issues:
+        status = str(issue.get("status", "YET_TO_START")).upper()
+        if status == "DONE":
+            continue
+
+        issue_cat = str(issue.get("category", "")).strip().lower()
+        if issue_cat != target_category:
+            continue
+
+        coords = extract_lat_lng(issue)
+        if not coords:
+            continue
+
+        dist = haversine_distance_meters(lat, lng, coords[0], coords[1])
+        if dist <= radius_meters and dist < closest_distance:
+            closest_distance = dist
+            closest_issue = issue
+
+    return closest_issue
