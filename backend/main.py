@@ -4,6 +4,9 @@ This file is intentionally minimal: it wires CORS, registers the two
 routers, and handles startup/shutdown. Feature work belongs in
 `routers/` and `services/` — do not add business logic here.
 
+One deliberate exception: `POST /api/seed` (Dev 3). It is an infrastructure
+convenience hook that repopulates the demo dataset — see `seed_data.py`.
+
 Run locally:
     cd backend
     uvicorn main:app --reload
@@ -18,8 +21,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database import close_client, ensure_indexes
 from routers import admin_routes, citizen_routes
-
-import os
 
 
 @asynccontextmanager
@@ -46,15 +47,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow the React dev server. Override with CORS_ORIGIN in backend/.env.
+# CORS — wide open so the Vite dev server, `localhost`, and the deployed
+# frontend (e.g. Vercel) can all reach the API with no per-origin config.
+#
+# `allow_credentials` is False on purpose: the app authenticates nothing via
+# cookies (the citizen `reporter_id` lives in localStorage), and browsers
+# reject a wildcard origin combined with credentials anyway.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        os.getenv("CORS_ORIGIN", "http://localhost:5173"),
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -86,3 +88,21 @@ async def _not_implemented_handler(request, exc: NotImplementedError):
 async def health_check():
     """Cheap liveness probe for the frontend and for deploy checks."""
     return {"status": "ok"}
+
+
+@app.post("/api/seed", tags=["seed"])
+async def seed_database(force: bool = True):
+    """Dev 3 — one-click (re)population of the demo dataset.
+
+    `force=true` (the default) wipes the `issues` collection and re-inserts
+    the 10 curated Pune demo issues. Handy right before recording the demo
+    video so the Kanban board and Analytics page always look full.
+
+    Pass `force=false` to seed only when the collection is empty.
+
+    The heavy lifting lives in `seed_data.py`; this endpoint is just the
+    HTTP trigger.
+    """
+    from seed_data import seed_demo_issues
+
+    return await seed_demo_issues(force=force)
