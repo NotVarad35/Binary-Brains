@@ -1,0 +1,25 @@
+# Render Blueprint — deploys the FastAPI backend in one click.
+# Docs: https://render.com/docs/blueprint-spec
+#
+# In Render: New → Blueprint → connect this repo. Render reads this file,
+# provisions the service, and prompts you for the secret MONGO_URI.
+services:
+  - type: web
+    name: binary-brains-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.4"
+      # Set this in the Render dashboard (it contains credentials).
+      - key: MONGO_URI
+        sync: false
+      - key: MONGO_DB_NAME
+        value: binary_brains
+      - key: MONGO_SERVER_SELECTION_TIMEOUT_MS
+        value: "3000"
